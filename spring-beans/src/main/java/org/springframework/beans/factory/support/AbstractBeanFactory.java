@@ -254,6 +254,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 		Object beanInstance;
 
 		// Eagerly check singleton cache for manually registered singletons.
+		//cyx 先尝试从缓存里拿，这里可能拿到null，bean实例，和bean的工厂实例
 		Object sharedInstance = getSingleton(beanName);
 		if (sharedInstance != null && args == null) {
 			if (logger.isTraceEnabled()) {
@@ -268,17 +269,21 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			beanInstance = getObjectForBeanInstance(sharedInstance, name, beanName, null);
 		}
 
+		//cyx 下面是没有拿到缓存的情况，相当于第一次创建
 		else {
 			// Fail if we're already creating this bean instance:
 			// We're assumably within a circular reference.
+			//cyx 只有单例才会尝试解决循环依赖，否则直接抛出错误
 			if (isPrototypeCurrentlyInCreation(beanName)) {
 				throw new BeanCurrentlyInCreationException(beanName);
 			}
 
 			// Check if bean definition exists in this factory.
 			BeanFactory parentBeanFactory = getParentBeanFactory();
+			//cyx 如果beanDefinitionMap中也就是已加载的类中不包括该beanName，则尝试从父工厂中查找
 			if (parentBeanFactory != null && !containsBeanDefinition(beanName)) {
 				// Not found -> check parent.
+				//cyx 这里是防止用了别名，通过别名查找出原始的名称
 				String nameToLookup = originalBeanName(name);
 				if (parentBeanFactory instanceof AbstractBeanFactory) {
 					return ((AbstractBeanFactory) parentBeanFactory).doGetBean(
@@ -298,6 +303,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			}
 
 			if (!typeCheckOnly) {
+				//cyx 如果不是仅做类型检查，那就是创建bean，标记为已创建（或即将创建），这允许BeanFactory优化其缓存，以便重复创建指定的Bean。
 				markBeanAsCreated(beanName);
 			}
 
@@ -311,15 +317,19 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 				checkMergedBeanDefinition(mbd, beanName, args);
 
 				// Guarantee initialization of beans that the current bean depends on.
+				//cyx 获取依赖
 				String[] dependsOn = mbd.getDependsOn();
 				if (dependsOn != null) {
 					for (String dep : dependsOn) {
+						//cyx 校验下是不是依赖，去dependentBeanMap里查一下
 						if (isDependent(beanName, dep)) {
 							throw new BeanCreationException(mbd.getResourceDescription(), beanName,
 									"Circular depends-on relationship between '" + beanName + "' and '" + dep + "'");
 						}
+						//cyx 缓存依赖调用
 						registerDependentBean(dep, beanName);
 						try {
+							//cyx 实例化一下dep
 							getBean(dep);
 						}
 						catch (NoSuchBeanDefinitionException ex) {
@@ -331,6 +341,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 
 				// Create bean instance.
 				if (mbd.isSingleton()) {
+					//cyx 这里的参数是函数式接口，传入的是一个方法，此时getObject()就变成了这个lambda表达式里的createBean方法
 					sharedInstance = getSingleton(beanName, () -> {
 						try {
 							return createBean(beanName, mbd, args);
@@ -1149,6 +1160,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 
 	@Override
 	public boolean isFactoryBean(String name) throws NoSuchBeanDefinitionException {
+		//cyx 去除工厂前缀，比如&
 		String beanName = transformedBeanName(name);
 		Object beanInstance = getSingleton(beanName, false);
 		if (beanInstance != null) {
@@ -1264,10 +1276,10 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	//---------------------------------------------------------------------
 
 	/**
-	 * Return the bean name, stripping out the factory dereference prefix if necessary,
-	 * and resolving aliases to canonical names.
-	 * @param name the user-specified name
-	 * @return the transformed bean name
+	 * 返回 bean 名称，必要时去掉工厂取消引用前缀，
+	 * 并将别名解析为规范名称。
+	 * @param name 用户指定的名称
+	 * @return 转换后的bean 名称
 	 */
 	protected String transformedBeanName(String name) {
 		return canonicalName(BeanFactoryUtils.transformedBeanName(name));
@@ -1675,9 +1687,9 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	}
 
 	/**
-	 * Check whether the given bean is defined as a {@link FactoryBean}.
-	 * @param beanName the name of the bean
-	 * @param mbd the corresponding bean definition
+	 * 检查给定的 bean 是否定义为 {@link FactoryBean}。
+	 * @param beanName bean 的名称
+	 * @param mbd 相应的 bean 定义
 	 */
 	protected boolean isFactoryBean(String beanName, RootBeanDefinition mbd) {
 		Boolean result = mbd.isFactoryBean;
@@ -1857,10 +1869,11 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	 * @param mbd the merged bean definition
 	 * @return the object to expose for the bean
 	 */
-	protected Object getObjectForBeanInstance(
+	protected Object  getObjectForBeanInstance(
 			Object beanInstance, String name, String beanName, @Nullable RootBeanDefinition mbd) {
 
 		// Don't let calling code try to dereference the factory if the bean isn't a factory.
+		//cyx 如果是bean的工厂（这里是通过有无&前缀来判断的）
 		if (BeanFactoryUtils.isFactoryDereference(name)) {
 			if (beanInstance instanceof NullBean) {
 				return beanInstance;
@@ -1877,15 +1890,19 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 		// Now we have the bean instance, which may be a normal bean or a FactoryBean.
 		// If it's a FactoryBean, we use it to create a bean instance, unless the
 		// caller actually wants a reference to the factory.
+		//cyx 到这一步已经排除掉了bean工厂，上面已经返回了
 		if (!(beanInstance instanceof FactoryBean)) {
+			//cyx 如果不是继承了FactoryBean的，直接返回
 			return beanInstance;
 		}
 
+		//cyx 到这里就确定是FactoryBean了
 		Object object = null;
 		if (mbd != null) {
 			mbd.isFactoryBean = true;
 		}
 		else {
+			//cyx 尝试从FactoryBean缓存map里拿一下
 			object = getCachedObjectForFactoryBean(beanName);
 		}
 		if (object == null) {

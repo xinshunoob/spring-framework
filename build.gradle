@@ -290,6 +290,9 @@ configure(allprojects) { project ->
 			cacheChangingModulesFor 0, "seconds"
 		}
 		repositories {
+			mavenLocal()
+			maven { url "https://mirrors.tuna.tsinghua.edu.cn" }
+			maven { url "https://mirrors.ustc.edu.cn" }
 			mavenCentral()
 			maven { url "https://repo.spring.io/libs-spring-framework-build" }
 		}

@@ -72,10 +72,10 @@ public abstract class BeanFactoryUtils {
 	}
 
 	/**
-	 * Return the actual bean name, stripping out the factory dereference
-	 * prefix (if any, also stripping repeated factory prefixes if found).
-	 * @param name the name of the bean
-	 * @return the transformed name
+	 * 返回实际的 bean 名称，去掉工厂的取消引用
+	 * 前缀（如果有，如果找到，也会去除重复的工厂前缀）。
+	 * @param name bean的名称
+	 * @return 转换后的名称
 	 * @see BeanFactory#FACTORY_BEAN_PREFIX
 	 */
 	public static String transformedBeanName(String name) {
